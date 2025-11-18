@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ferramentas do Produtor</title>
+
+<style>
+    :root {
+        --primary: #2e8b57;
+        --primary-dark: #246b44;
+        --background: #f4f6f4;
+        --card-bg: #fff;
+    }
+
+    body {
+        margin: 0;
+        background: var(--background);
+        font-family: Arial, sans-serif;
+    }
+
+    header {
+        background: var(--primary);
+        color: white;
+        padding: 20px;
+        text-align: center;
+    }
+
+    header img {
+        height: 80px;
+        margin-bottom: 10px;
+    }
+
+    .container {
+        width: 94%;
+        max-width: 900px;
+        margin: 20px auto;
+        background: var(--card-bg);
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 0 10px #0001;
+    }
+
+    h2 { color: var(--primary); }
+
+    button {
+        width: 100%;
+        background: var(--primary);
+        color: white;
+        padding: 16px;
+        border: none;
+        border-radius: 10px;
+        font-size: 18px;
+        margin-top: 12px;
+        cursor: pointer;
+    }
+
+    button:hover { background: var(--primary-dark); }
+
+    input {
+        width: 100%;
+        padding: 14px;
+        margin-top: 10px;
+        font-size: 18px;
+        border-radius: 10px;
+        border: 1px solid #bbb;
+    }
+
+    video {
+        width: 100%;
+        border-radius: 12px;
+        margin-top: 15px;
+    }
+
+    .mensagem {
+        margin-top: 15px;
+        padding: 15px;
+        border-radius: 10px;
+        font-weight: bold;
+        font-size: 16px;
+    }
+
+    .success { background: #d8ffe1; color: #1d6b34; }
+    .error   { background: #ffe0e0; color: #7e0000; }
+
+    #loading {
+        display: none;
+        margin-top: 15px;
+        text-align: center;
+        font-size: 18px;
+        font-weight: bold;
+        color: var(--primary-dark);
+    }
+
+    /* Telas */
+    .tela { display: none; }
+    .ativa { display: block; }
+</style>
+
+</head>
+<body>
+
+<header>
+    <img src="logo.png">
+    <h1>Ferramentas do Produtor</h1>
+</header>
+
+<!-- ░░░ TELA INICIAL ░░░ -->
+<div id="inicio" class="container tela ativa">
+    <h2>Escolha uma opção</h2>
+
+    <button onclick="abrirTela('foto')">📷 Identificação pela Foto</button>
+    <button onclick="abrirTela('torax')">📏 Estimativa pelo Tórax</button>
+</div>
+
+<!-- ░░░ TELA DA FOTO ░░░ -->
+<div id="foto" class="container tela">
+    <h2>Identificação pela Foto</h2>
+
+    <video id="video" playsinline autoplay></video>
+
+    <button onclick="tirarFoto()">📸 Tirar Foto</button>
+
+    <canvas id="canvas" style="display:none;"></canvas>
+
+    <div id="loading">⏳ Analisando foto...</div>
+
+    <!-- Aqui aparece somente o texto da API -->
+    <div id="resultadoFoto"></div>
+
+    <button onclick="abrirTela('inicio')">⬅ Voltar</button>
+</div>
+
+<!-- ░░░ TELA DO TÓRAX ░░░ -->
+<div id="torax" class="container tela">
+    <h2>Estimativa pelo Tórax</h2>
+
+    <label>Medição do Tórax (cm):</label>
+    <input id="inputTorax" type="number" placeholder="Ex: 75">
+
+    <button onclick="calcular()">Calcular</button>
+
+    <div id="resultadoTorax"></div>
+
+    <button onclick="abrirTela('inicio')">⬅ Voltar</button>
+</div>
+
+<script>
+/* ░░░ TROCAR TELAS ░░░ */
+function abrirTela(id) {
+    document.querySelectorAll(".tela").forEach(t => t.classList.remove("ativa"));
+    document.getElementById(id).classList.add("ativa");
+
+    if (id === "foto") iniciarCamera();
+}
+
+/* ░░░ CÂMERA ░░░ */
+let stream;
+
+function iniciarCamera() {
+    navigator.mediaDevices.getUserMedia({ video: true })
+        .then(s => {
+            stream = s;
+            document.getElementById("video").srcObject = s;
+        })
+        .catch(() => {
+            mostrarMsg("resultadoFoto", "Erro ao acessar câmera.", true);
+        });
+}
+
+/* ░░░ TIRAR FOTO → ENVIAR → MOSTRAR APENAS O RESULTADO ░░░ */
+function tirarFoto() {
+    let video = document.getElementById("video");
+    let canvas = document.getElementById("canvas");
+    let ctx = canvas.getContext("2d");
+    let loading = document.getElementById("loading");
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    let base64full = canvas.toDataURL("image/jpeg");
+    let base64clean = base64full.replace("data:image/jpeg;base64,", "");
+
+    // Mostrar loading
+    loading.style.display = "block";
+    mostrarMsg("resultadoFoto", "");
+
+    fetch("https://0h8r4swvyc.execute-api.us-east-1.amazonaws.com/prd/", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ base64: base64clean })
+    })
+    .then(r => r.json())
+    .then(data => {
+        loading.style.display = "none";
+
+        // Exibir o que a API retornar
+        mostrarMsg("resultadoFoto", data.body || "Análise concluída!", false);
+    })
+    .catch(() => {
+        loading.style.display = "none";
+        mostrarMsg("resultadoFoto", "Erro ao enviar a foto.", true);
+    });
+}
+
+/* ░░░ ESTIMATIVA PELO TÓRAX ░░░ */
+function calcular() {
+    let torax = parseFloat(document.getElementById("inputTorax").value);
+
+    if (!torax || torax <= 0) {
+        mostrarMsg("resultadoTorax", "Digite um valor válido!", true);
+        return;
+    }
+
+    let peso = (torax**3) / 10500;
+    let carcaca = peso * 0.48;
+    let carne = carcaca * 0.70;
+    let gordura = carcaca * 0.08;
+
+    mostrarMsg("resultadoTorax",
+        `Peso estimado: <b>${peso.toFixed(1)} kg</b><br>
+         Carcaça: <b>${carcaca.toFixed(1)} kg</b><br>
+         Carne: <b>${carne.toFixed(1)} kg</b><br>
+         Gordura: <b>${gordura.toFixed(1)} kg</b>`,
+         false
+    );
+}
+
+/* ░░░ MENSAGENS ░░░ */
+function mostrarMsg(id, txt, erro=false) {
+    let div = document.getElementById(id);
+    div.className = erro ? "mensagem error" : "mensagem success";
+    div.innerHTML = txt;
+}
+</script>
+
+</body>
+</html>
